@@ -1,6 +1,5 @@
 ---
-title: "FinalProject_MeanGirls"
-author: "Mean Girls"
+title: "Group_Research_Project_Smoking"
 date: "11/18/2015"
 output: html_document
 runtime: shiny
