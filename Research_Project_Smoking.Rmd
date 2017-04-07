@@ -1,0 +1,847 @@
+---
+title: "FinalProject_MeanGirls"
+author: "Mean Girls"
+date: "11/18/2015"
+output: html_document
+runtime: shiny
+---
+
+Our data set has information regarding smoking cases for 780 countries, with a few years of data per country.
+The variables include data on enforcement of law regarding smoking (namely
+smoking in public locations), funding for the prevention of smoking, and whether or not
+punishments were enforced in that country during a given year. 
+
+Our main interest in this data is to examine the effect of state efforts to 
+prevent smoking. 
+
+Our questions are the following:
+-Does increased spending on prevention efforts translate to a decrease in smoking?
+-Does this phenomenon vary by gender? Does it vary by region of the world? Does it vary by age demographic (teens or adults)? Are these variations significant? What methods will eventually prove to be more useful when analyzing these questions?
+
+To answer this question, several things would be useful. 
+
+1. Visualizations
+
+It is important to be able to visualize the relationships we are exploring. For
+example, a visualization of government spending as the explanatory variable and
+percentage of smokers as the response variable can potentially reveal a relationship
+between these two variables. We will determine how appropriate a linear model can be 
+for fitting this relationship.
+
+2. Hypothesis tests
+
+It is equally important to test if differences in mean smoking rates between
+genders are statistically significant. We can do this through a differences in
+mean test (i.e. a two sample t test). We will most likely use a 95% confidence
+interval because that is the standard for significance. It is important to note, from the very beginning, that we will rely heavily on the Central Limit Theorem, which states that, if certain, conditions are met, then the sampling distribution of the sample statictic will be nearly normally distributed, with mean equal to the population parameter and standard error inversely proportional to the sample size. Since we will only use t.tests throughout our analysis, we can check, from the beginning, that the conditions necessary for applying the Central Limit Theorem will be met:
+
+1. Independence:
+
+Our observations are indeed independent, since these data were randomly collected. Moreover, the number of observations is less then 2000, which is obviously less than 10% of the actual population size.
+
+2. Sample size/distribution:
+
+For our numerical variables ("Year", "smokefreespots", "Numeric", "Low" and "High"), the the sample sizes are significantly larger than the standard value of n=30, so even if the data has a right skewed distribution, we have enough observations. 
+
+Moreover, as far as the categorical variables are concerned, we have at least 10 successes and 10 failures, so the condition is met. 
+
+When doing comparisons between populations, i.e. between the sex of the individuals, the region of the world they come from or the age demographic (teens or adults), the samples will be independent of each other since the data are observational. 
+
+3. Regressions
+
+We will try to fit linear models that predict the effectiveness of the anti-smoke implemented measures for two different regions of the world, namely the Americas and Africa. Thus, we will investigate which particular state-inforced measurements produced meaningful reductions in the percentages of smokers for that are of the world. 
+
+Loading the useful packages:
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(shiny)
+set.seed(1124)
+```
+
+#### Loading the first data set and renaming columns into more intuitive names:
+
+```{r}
+data1 <- read.csv("data (1).csv", stringsAsFactors=FALSE)
+
+colnames(data1) = c("Country", 
+                    "Year", 
+                    "smokefreespots", 
+                    "finesforviolations",
+                    "finesongovernment",
+                    "finesonpatron",
+                    "fundsforenforcement",
+                    "complaints",
+                    "subnationallegislation",
+                    "subnationalbans")
+
+#We make sure the smokefreespots variable has the "integer" type. 
+
+data1 <- data1 %>%
+  mutate(smokefreespots = as.integer(smokefreespots))
+```
+
+#### Loading the second dataset and renaming the columns to be easier to access:
+
+```{r}
+
+data2 <- read.csv("data-text.csv", stringsAsFactors=FALSE)
+#head(data2)
+#str(data2)
+data.text <- data2 %>%
+  mutate(demo = ifelse(Indicator == "Prevalence of current tobacco use among adolescents aged 13-15 years", "teen", ifelse(Indicator == "Prevalence of smoking any tobacco product among persons aged >= 15 years", "adult", Indicator)))
+  
+```
+
+#### Merging the two datasets into a single dataset:
+
+```{r}
+smoking <- merge(data1, data.text, by = intersect(names(data1), names(data.text)))
+smoking <- smoking %>%
+  mutate(demo = ifelse(Indicator == "Prevalence of current tobacco use among adolescents aged 13-15 years", "teen", ifelse(Indicator == "Prevalence of smoking any tobacco product among persons aged >= 15 years", "adult", Indicator)))
+```
+
+#### We look at the structure of this new data set:
+
+```{r echo = FALSE}
+str(smoking)
+#head(smoking)
+```
+
+The types of variables are as desired for the moment, since the categorical variables are characters (which can be later coerced to factors) and since the numerical discrete variables (such as "Year" and "smokefreespots") are of the integer type, while the numerical continuous variables (such as "Numeric", "Low" and "High") are of the "num" type. 
+
+#### Shiny Application
+
+The following is a Shiny Application that will be used as a starting point in our data analysis. 
+This interactive plot takes any of the variables in the dataset as explanatory 
+or response variables, and offers the user an option of coloring by a certain 
+categorical variable and/or faceting by a certain categorical variable. 
+
+```{r echo = FALSE}
+  sidebarLayout(
+    sidebarPanel(
+      
+      selectInput("var1", 
+                  "Explanatory Variable",
+                  choices = c( 
+                    "factor(Year)", 
+                    "WHO.region",
+                    "Sex",
+                    "demo",
+                    "Numeric",
+                    "smokefreespots",
+                    "finesonpatron",
+                    "fundsforenforcement"
+                    )),
+      
+      selectInput("var2", 
+                  "Response Variable",
+                   choices = c( 
+                    "factor(Year)", 
+                    "WHO.region",
+                    "Sex",
+                    "demo",
+                    "Numeric",
+                    "smokefreespots",
+                    "finesonpatron",
+                    "fundsforenforcement"
+                    )),
+      
+      selectInput("color", 
+                  "Categorical Variable (color)",
+                    choices = c("None",
+                    "factor(Year)", 
+                    "WHO.region",
+                    "Sex",
+                    "demo",
+                    "smokefreespots",
+                    "finesonpatron",
+                    "fundsforenforcement"
+                    )),
+      
+      selectInput("facet", 
+                  "Facet Variable (categorical)",
+                    choices = c("None",
+                    "factor(Year)", 
+                    "WHO.region",
+                    "Sex",
+                    "demo",
+                    "Numeric",
+                    "smokefreespots",
+                    "finesonpatron",
+                    "fundsforenforcement"
+                    )),
+      
+      hr()
+        
+      ),
+
+    mainPanel(
+      
+      plotOutput('Plot')
+    )
+
+    )
+
+output$Plot <- renderPlot({
+    
+    pop_name1 = switch(input$var1, 
+                    Country = "Country", 
+                    Year = "Year", 
+                    smokefreespots = "smokefreespots", 
+                    finesforviolations = "finesforviolations",
+                    finesongovernment = "finesongovernment",
+                    finesonpatron = "finesonpatron",
+                    fundsforenforcement = "fundsforenforcement",
+                    complaints = "complaints",
+                    subnationallegislation = "subnationallegislation",
+                    subnationalbans = "subnationalbans",
+                    WHO.region = "WHO.region",
+                    Sex = "Sex",
+                    demo = "demo",
+                    Numeric = "Numeric")
+    
+    pop_name2 = switch(input$var1, 
+                    Country = "Country", 
+                    Year = "Year", 
+                    smokefreespots = "smokefreespots", 
+                    finesforviolations = "finesforviolations",
+                    finesongovernment = "finesongovernment",
+                    finesonpatron = "finesonpatron",
+                    fundsforenforcement = "fundsforenforcement",
+                    complaints = "complaints",
+                    subnationallegislation = "subnationallegislation",
+                    subnationalbans = "subnationalbans",
+                    WHO.region = "WHO.region",
+                    Sex = "Sex",
+                    demo = "demo",
+                    Numeric = "Numeric")
+    
+    if(input$facet %in% c("None") & input$color %in% c("None")){
+      ggplot(data = smoking, aes_string(x = input$var1, y = input$var2)) +
+      geom_boxplot() +
+      ggtitle(pop_name1)
+    }
+    else if(input$color %in% c("None")){
+      ggplot(data = smoking, aes_string(x = input$var1, y = input$var2)) +
+      geom_boxplot() +
+      facet_wrap(input$facet)+
+      ggtitle(pop_name1) 
+    }
+    else if(input$facet %in% c("None")){
+      ggplot(data = smoking, aes_string(x = input$var1, y = input$var2, color = input$color)) +
+      geom_boxplot() +
+      ggtitle(pop_name1)
+    }
+    else{
+      ggplot(data = smoking, aes_string(x = input$var1, y = input$var2, color = input$color)) +
+      geom_boxplot() +
+      facet_wrap(input$facet)+
+      ggtitle(pop_name1)
+    }
+  })
+```
+
+By trying out a few options for this plot, we can make a general idea of the trends occuring in our data set. We will later provide more specifical visualization, that focus on particular aspects of our data set. 
+
+
+Here are some questions we are exploring throughout our analysis:
+
+
+#### 1. Does allocating funds to enforce laws against smoking make a real difference in smoking rates? Do those rates vary by gender?
+
+The first step in answering this question is to make a visualization of the
+variables in question, namely "fundsforenforcement", "Numeric", and "Sex".
+
+```{r}
+ggplot(data = smoking, aes(x = factor(fundsforenforcement), y = Numeric))+
+  geom_boxplot()+
+  facet_wrap("Sex")+
+  ggtitle("Funds for Enforcement and Smoking Rates Between Sexes") +
+  xlab("Funds For Enforcement") +
+  ylab("Smoking Rates")
+```
+
+
+We can make some initial observations from this graph. First, for both sexes, it appears that if the government allocates funds to enforce smoking laws, there is actually a greater number of people who smoke. This can be seen by comparing the min, max, and median values of the boxplots. One possible explanation for this is that in countries where funds to prevent smoking are necessary, there is already a high number of people who smoke.
+
+Summary statistics for countries that provide funds
+
+```{r}
+smoking %>%
+  filter(fundsforenforcement == "Yes")%>%
+  group_by(Sex)%>%
+  summarize(mean = mean(Numeric), median = median(Numeric), sd = sd(Numeric))
+```
+
+Summary statistics for countries that don't provide funds
+```{r}
+smoking %>%
+  filter(fundsforenforcement == "No")%>%
+  group_by(Sex)%>%
+  summarize(mean = mean(Numeric), median = median(Numeric), sd = sd(Numeric))
+```
+
+Another observation we get from this plot is that smoking is much more prevalent among males than females. The median smoking rate for females (both box plots) is about 10%, while the median smoking rate for males (both box plots) is about 33%. 
+
+By looking at the summary statistics, it is easy to see that there is not much change between smoking rates in countries that do and don't provide funds for enforcement, but is the slight difference signficant?
+
+The first hypothesis test we are going to conduct is checking whether there is a true difference in smoking rates for countries that allocate funds to prevent smoking or not.
+
+The first step is to filter the data for countries that provide funds and countries that don't provide funds.
+
+```{r}
+funds_yes <- smoking %>%
+  filter(fundsforenforcement == "Yes")
+funds_no <- smoking %>%
+  filter(fundsforenforcement == "No")
+```
+
+The following is a two sided t test to test if the sample data are significantly different
+
+```{r}
+t.test(funds_yes$Numeric, funds_no$Numeric, null = 0, alternative = "two.sided")
+```
+
+We get a p value of 0.503, which represents the probability of getting the observed difference (0.967) or a value more extreme. In this case, it would be a difference of 0.967 or closer to 0. Furthermore, the p value is too large (greater than .05, which is our alpha value), so we fail to reject the null hypothesis. Based solely on the sample data, there is not a significant difference in smoking rates between countries that provide funds for enforcement and countries that do not provide funds for enforcement.
+
+Here we create a bootstrap distribution to find confidence intervals for the whole population.
+
+```{r}
+funds_boot <- data.frame(yes = rep(NA, 15000), no = rep(NA, 15000))
+for(i in 1:15000){
+  s <- sample(funds_yes$Numeric, length(funds_yes$Numeric), replace = TRUE)
+  funds_boot$yes[i] <- mean(s)
+  s <- sample(funds_no$Numeric, length(funds_no$Numeric), replace = TRUE)
+  funds_boot$no[i] <- mean(s)
+}
+
+```
+
+Here is the 95% confidence interval calculated using the bootstrapped data:
+
+```{r}
+se <- sd(funds_boot$yes - funds_boot$no)
+p_hat <- mean(funds_yes$Numeric) - mean(funds_no$Numeric)
+(boot_int = round(p_hat + c(-1,1) * 1.96 * se, 4))
+```
+
+From the confidence interval created, we are 95% confident that the difference in smoking rates for countries that allocate funds to prevent smoking and countries that do not between -1.82 and 3.76. This confidence interval contains the value 0, which again shows that there is not a significant difference between countries that allocate funds and countries that do not. 
+
+From solely this data, we gather that it might be a smarter policy for countries not to spend money on enforcing smoking policies. Perhaps there is another, more efficient way to prevent people from smoking. We acknowledge that the data doesn't provide how much money was spent or how long the policy has been enacted, which could be two major factors in determining if the policy is efficient. 
+
+The next question that naturally arises is the following:
+
+##Is this trend consistent throughout various regions of the world or does it vary based on region? 
+
+To answer this question, we look at a developed region, namely the Americas, and compare the differences to a developing region.
+
+The first step is to filter the data for countries in the Americas and Africa that provide funding, and then run a two sided t test on smoking percentages to see if there is a significant difference.
+
+```{r}
+am <- funds_yes%>%
+  filter(WHO.region == "Americas")
+af <- funds_yes%>%
+  filter(WHO.region == "Africa")
+t.test(am$Numeric, af$Numeric, alternative = "two.sided")
+```
+
+The p value of 0.5527 means there is a 55.27% chance that the observed difference or a smaller difference occured in the null distribution, and thus we fail to reject the hypothesis that there is a significant difference between them. When countries in both the Americas and Africa provide funds for preventing smoking, there is not a significant difference in the percentage of people who smoke.
+
+Similarly, we can run the same t test on data for countries in the two regions that don't provide funds for enforcement.
+
+```{r}
+am <- funds_no%>%
+  filter(WHO.region == "Americas")
+af <- funds_no%>%
+  filter(WHO.region == "Africa")
+t.test(am$Numeric, af$Numeric, conf.int = 0.1, alternative = "two.sided")
+```
+
+The p value of 0.0686 is low enough to reject the null hypothesis in favor of the alternative, namely that when countries in America and Africa don't provide funding, at a 10% confidence level, there is a statistically significant difference that Africa has a lower percentage of people who smoke than America. This is something we might not expect because of America's relative economic development, but upon further consideration, if a country does not provide funds to enforce smoking, there is probably not a problem with smoking initially in that country. In America, if people want to smoke, they are going to regardless of legislation, but in Africa, if there is no legislation, it is reasonable to assume less people smoke in that country. 
+
+Another interesting graph to look at is with Numeric as the response variable, Sex as the explanatory variable, colored by demo (that is the age demographic, whether individuals are considered as adults or rather as teens), and faceted by WHO.region.
+
+This plot provides insight into differences among male and female rates of smoking for the two demographics, around the world. One interesting observation is that, for every region, for females, teens smoke more than adults, but for males, adults smoke more than teens. Is this significant?
+
+In order to answer this question we wil again run a two sample t.test on data filtered appropriately:
+
+```{r}
+gen_male_teen <- smoking%>%
+  filter(Sex == "Male" & demo == "teen")
+#gen_male_teen$demo
+gen_male_adult <- smoking%>%
+  filter(Sex == "Male" & demo == "adult")
+#gen_male_adult$demo
+gen_female_teen <- smoking%>%
+  filter(Sex == "Female" & demo == "teen")
+#gen_female_teen$demo
+gen_female_adult <- smoking%>%
+  filter(Sex == "Female" & demo == "adult")
+#gen_female_adult$demo
+
+```
+
+Here is a t test testing significance for differences in teen and adult smoking for all the countries provided.
+
+```{r}
+t.test(gen_male_teen$Numeric, gen_male_adult$Numeric, alternative = "two.sided")
+```
+
+We get a p value incredibly close to 0, so we reject the null hypothesis in favor of the alternative, namely that for males, there is a signifcantly greater smoking rate in adults than in teens.
+
+Here is the same test for females
+
+```{r}
+t.test(gen_female_teen$Numeric, gen_female_adult$Numeric, alternative = "two.sided")
+```
+
+For females, we get a p value of 0.03, which is low enough to reject the null hypothesis in favor of the alternative, namely that for females, teens have a higher smoking rate than adults.
+
+From the above t tests, we can conclude that for males, there is a statistically significant difference that adults smoke more than teens. However, for females, there is a statistically significant difference in the opposite direction, namely that teens smoke more than adults. There are several possible explanations for this. One could be that as females reach maturity, they start thinking about reproduction, and they know that smoking is bad for a child both as they are carrying the child and for the child to live around smoke, so they are more inclined to stop smoking as they get older. On the other hand, males enter the workforce and may be more exposed to that culture, and take up smoking more. 
+
+From the graph, this phenomena is consistent throughout every region, and the above explanation holds true regardless of the region.
+
+The next question to answer from these variables is whether or not there is a statistically significant difference between smoking rates for males and females.
+
+The first step in answering this question is to perform a paired t test on the means for each sample.
+
+```{r}
+smoking_male <- smoking %>%
+  filter(Sex == "Male")
+smoking_female <- smoking %>%
+  filter(Sex == "Female")
+```
+
+```{r}
+sex_boot <- data.frame(male = rep(NA, 15000), female = rep(NA, 15000))
+for(i in 1:15000){
+  s <- sample(smoking_male$Numeric, length(smoking_male$Numeric), replace = TRUE)
+  sex_boot$male[i] <- mean(s)
+  s <- sample(smoking_female$Numeric, length(smoking_female$Numeric), replace = TRUE)
+  sex_boot$female[i] <- mean(s)
+}
+```
+
+Now the t test with the sample data:
+
+```{r}
+t.test(smoking_male$Numeric, smoking_female$Numeric, alternative = "two.sided")
+```
+
+Calculating the confidence interval using bootstrapped data:
+
+```{r}
+p_hat <- mean(smoking_male$Numeric) - mean(smoking_female$Numeric)
+se <- sd(sex_boot$male - sex_boot$female)
+(boot_int <- round(p_hat + c(-1,1) * 1.96 * se, 4))
+
+```
+
+We get a similar p value for each test, and both are insignificantly different
+from 0.
+
+We saw earlier from the graph that there was a fairly large disparity between male and female smoking rates, so this t test makes sense. The p value is incredibly small, so we reject the null hypothesis in favor of the alternative, which states that the true difference in the two means is not equal to zero. We can say with 95% confidence that the true difference lies between 18.872 and 19.840.
+
+Therefore, whatever policy the government makes to prevent smoking should be more targeted towards males because more males smoke than females.
+
+### 3. Does the percentage of teen smokers differ from the number of adult smokers in various regions?
+
+Let's visualize the relationship between the variables "Numeric", "demo", and "WHO.region"
+
+```{r}
+ggplot(data = smoking, aes(x = factor(demo), y = Numeric))+
+  geom_boxplot()+
+  facet_wrap("WHO.region")+
+  ggtitle("Age Demographic of person and Smoking rates") +
+  xlab("Age Demographic") +
+  ylab("Smoking Rates")
+```
+
+Based solely on this plot, we can see that the only regions in which teen smokers is greater than adult smokers are in Africa and the Americas.
+
+We can also make a summary table of the values to get a more quantitative description of the data:
+
+```{r}
+summ_region_teen <- smoking %>%
+  filter(demo == "teen")%>%
+  group_by(WHO.region)%>%
+  summarise(mean = mean(Numeric), sd = sd(Numeric), IQR = IQR(Numeric))
+summ_region_teen
+summ_region_adult <- smoking %>%
+  filter(demo == "adult")%>%
+  group_by(WHO.region)%>%
+  summarise(mean = mean(Numeric), sd = sd(Numeric), IQR = IQR(Numeric))
+summ_region_adult
+```
+
+We can see that for both teens and adults, European countries have the highest smoking rates, which is a bit surprising given their level of development and education. The greatest variance comes from Western Pacific countries for both teens and adults.
+
+One interesting thing to explore is if the difference between teens and adults is signficant for the Americas. 
+
+The first step is to filter the data in data frames accordingly.
+
+```{r}
+smoking_americas_teens <- smoking %>%
+  filter(Indicator == "Prevalence of current tobacco use among adolescents aged 13-15 years" & WHO.region == "Americas")
+
+smoking_americas_adults <- smoking%>%
+  filter(Indicator == "Prevalence of smoking any tobacco product among persons aged >= 15 years" & WHO.region == "Americas")
+
+smoking_africa_teens <- smoking %>%
+  filter(Indicator == "Prevalence of current tobacco use among adolescents aged 13-15 years" & WHO.region == "Africa")
+
+smoking_africa_adults <- smoking%>%
+  filter(Indicator == "Prevalence of smoking any tobacco product among persons aged >= 15 years" & WHO.region == "Africa")
+
+```
+
+We can now do a hypothesis test for the difference between teen and adult smoking rates. Our null hypothesys will be the fact that the difference in means between the smoking teens and the smoking adults in the Americas region is 0. The alternative hypothesis is the fact the there actually is a difference in these means. 
+
+```{r}
+smoking_diff <- data.frame(am_diff = rep(NA, length(smoking_americas_teens$Numeric)), af_diff = rep(NA, length(smoking_americas_teens$Numeric)))
+for (i in 1:length(smoking_americas_teens$Numeric)){
+  s = sample(smoking_americas_teens$Numeric, length(smoking_americas_teens$Numeric), replace = TRUE)
+  s1 = sample(smoking_americas_adults$Numeric, length(smoking_americas_teens$Numeric), replace = TRUE)
+  m = mean(s - s1)
+  smoking_diff$am_diff[i] <- m
+  s2 = sample(smoking_africa_teens$Numeric, length(smoking_africa_teens$Numeric), replace = TRUE)
+  s3 = sample(smoking_africa_adults$Numeric, length(smoking_africa_teens$Numeric), replace = TRUE)
+  m1 = mean(s2 - s3)
+  smoking_diff$af_diff[i] <- m1
+  
+}
+```
+
+Creating the sample data for the t test, by taking out the difference in the observed percentages of smoking teens and of smoking adults:
+
+```{r}
+means_am <- smoking_americas_teens$Numeric - smoking_americas_adults$Numeric
+means_af <- smoking_africa_teens$Numeric - smoking_africa_adults$Numeric
+```
+
+To test if the discrepancies in means of the differences of teen and adult smoking rates are different in Africa as compared to America, we can do a paired t test on means of the differences from samples of the data.
+
+```{r}
+t.test(means_am, means_af, alternative = "two.sided")
+```
+
+The high p value of 0.75 means there is no significant difference between the difference in smoking rates between teens and adults in America and Africa, which is somewhat surprising given the differences in economic development of the two countries. Consequently, we fail to reject our null hypothesys in favor of the alternative one. This implies that smoking rates are independent of economic development levels of a country.
+
+##Working with models:
+
+We continue to investigate the effectiveness of state enforced measurements in decreasing smoking rates, but this time we will use a regression-based approach. 
+
+We are primarily interested in the distribution of the smoking rates for males and females and in whether there exists a correlation between these numbers and the laws implemented by the nation. If so, is that correlation linear? How strong is it? 
+
+We start with an exploratory analysis of the data. Although the "Numeric" variable offers information regarding the percentages of smokers (either males or females) in almost all coutries of the world, it may be useful to filter these data and work with a more restrained pool of values (one that is specific to a certain area). This way we are more likely to obtain a more statistically meaningful conclusion. 
+
+Consequently, we will start by examining the percentages in the "Americas" region, because of its history of implementing anti-smoking laws. Afterwards, we will do a comparison with the coresponding percentages for the "Africa" region, in order to recreate the comparison that was previously done between the Americas and Africa, this time using a regression-based approach. 
+
+We visualize the distribution of the values:
+
+The histogram for the "Americas" region:
+
+```{r}
+smoking %>%
+  filter(WHO.region == "Americas")%>%
+  ggplot(aes(x = Numeric))+
+  geom_histogram() + 
+  ggtitle("Distribution of Total Smokers Percentages in Americas") +
+  xlab("Total Smokers Percentages")
+```
+
+As we can see from this plot, the distribution of total smoke percentages in Americas is just slightly left skewed, with a mode occuring at about 22%. We can also take a look at the summary statictics to get more information:
+
+```{r}
+smoking %>%
+  filter(WHO.region == "Americas")%>%
+  summarise(mean = mean(Numeric), median = median(Numeric))
+```
+
+Thus, we obtain a mean of approximately 19% and a median approximately equal to the mean. 
+
+From the hypothesis testing conducted before, we know that males have considerably larger corresponding percentages of smoking than females. By looking at the histogram above, we notice that the total proportion of the high percentages equals that of the low percentages. Putting all these ideas together, we can infer that the proportion of males in our sample (i.e. the ones who yield high smoking rates) is approximately equal to the proportion of females in our sample (i.e. the ones that yield lower smoking rates.)
+
+Let's see whether we can confirm this reasoning by using a visualization:
+
+Consequently, we will now take a look at how the distribution of the smoking percentages varies by gender:
+
+```{r}
+smoking %>%
+  filter(WHO.region == "Americas")%>%
+  ggplot(aes(x = Sex))+
+  geom_histogram()
+```
+
+Indeed, the counts for both the Female and the Male seem to be almost equal. 
+
+Similarly, we will now take a look at the distribution of the total smoking percentages (i.e. the "Numeric" variable) in Africa: 
+
+```{r}
+smoking %>%
+  filter(WHO.region == "Africa")%>%
+  ggplot(aes(x = Numeric))+
+  geom_histogram() + 
+  ggtitle("Distribution of Total Smokers Percentages in Africa") +
+  xlab("Total Smokers Percentages")
+```
+
+We also use summary statistics in order to get more accurate information about the distribution, than just by reading the values off the plot. 
+
+```{r}
+smoking %>%
+  filter(WHO.region == "Africa")%>%
+  summary(mean = mean(Numeric), median = median(Numeric) )
+```
+
+This way, we obtain a distribution that is right-skewed, with a mode occuring at about 0, a mean equal to approximately 16 percent and a median equal to about 14 percent. Therefore, the non-smokers are more common in the Africa than in the America region. This can have various explanations, such as the fact that these two parts of the world have contrasting cultures and traditions. Moreover, the arid African soils may not be propitious for harvesting tobacco, and thus the lower frequency of cigarettes in Africa. 
+
+An important issue that is worth noting here and that will be very useful later in our model analysis is the fact that the very right-skewed distribution of the smoking rates in Africa suggests us to apply a log transformation in order to be able to find a model that better fits the scatteroplot we will create. 
+
+#Simple linear regression:
+
+We now tackle the following question, by trying to fit a linear model to the plot we will create: Did the implementation of smoke-free spots substantially decrease the smoking rates?
+
+In order to start, we firstly take a glimpse at the data showing the number of smoke-free spots imposed by a national legislation in the two regions of the world we are considering - "Americas" and "Africa", by using two histograms:
+
+```{r}
+smoking_americas <- smoking %>%
+  filter(WHO.region == "Americas")
+ggplot(data = smoking_americas, aes(x = smokefreespots))+
+  geom_histogram()
+```
+
+```{r}
+smoking_africa <- smoking %>%
+  filter(WHO.region == "Africa")
+ggplot(data = smoking_americas, aes(x = smokefreespots))+
+  geom_histogram()
+```
+
+Even though our intuition tells us that these small values of the numbers of smoke-free spots are unlikely to produce notable differences in overall smoking rates, we will investigate whether their implementation through a national law might still change the mentality of some individuals and determine them to reconsider smoking. 
+
+We now plot the distribution of the number of smoke-free spots, by also taking into account the years in which these numbers were imposed. 
+
+```{r}
+smoking_americas <- smoking %>%
+  filter(WHO.region == "Americas")
+ggplot(data = smoking_americas, aes(x = smokefreespots, fill= factor(Year)))+
+  geom_histogram(position = "dodge")
+  xlab("Number of Smoke-Free Spots")
+```
+
+
+
+```{r}
+smoking_africa <- smoking %>%
+  filter(WHO.region == "Africa")
+ggplot(data = smoking_americas, aes(x = smokefreespots, fill= factor(Year)))+
+  geom_histogram(position = "dodge")
+  xlab("Number of Smoke-Free Spots")
+```
+
+These two distributions show that the number of smoke-free spots implemented in 2010 and 2012 are considerably larger than the number of the smoke-free spots implemented during 2007. 
+
+This way, we can see that the year plays an important role when considering the percentages of smoking for both the "Americas" and the "Africas". 
+
+The linear model:
+
+The next relationship we can plot is the relationship between the number of smoke free spots and smoking rates within the Americas region. We will try to fit a linear model to this distribution. We will not apply a log() transformation to these data regarding the American theritory as their distribution was rather symmetric than right-skewed as we have seen before (the mean is even aproximately to the median). 
+
+
+```{r}
+ggplot(data = smoking_americas, aes(x = smokefreespots, y = Numeric))+
+  geom_point(position = "jitter")+ 
+  ggtitle("Number of Smoke-Free Spots vs. Smoking Rates")+
+  stat_smooth(method = "lm", fullrange = TRUE) +
+  xlab("Number of Smoke-Free Spots") +
+  ylab("Smoking Rates")
+```
+
+We apply position = "jitter" to the geom_point function in order to account for the cases when points overlap. 
+
+Interpretation of the model:
+
+```{r}
+lm(formula = Numeric ~ smokefreespots, data = smoking_americas)
+```
+
+The equation of the model is:
+
+$$\widehat{Numeric} = 20.9 + (-0.46)\times(smokefreespots)$$
+
+Intercept: Countries that have no smoking-free spots are expected, on average, to have smooking rates equal to approximately 21%. 
+
+Slope: By each unit increase in the smokefreespots, we expect the smoking percentages to decrease, on average, by 0.46. We objectively measure how powerful (or meaningful) the effect of implementing smoking free spots is by calculating the R squared for this model:
+
+```{r}
+america <- lm(formula = Numeric ~ smokefreespots, data = smoking_americas)
+summary(america)$r.squared
+```
+
+We obtain a very low value for r-squared, approximately 0.01, which means that the linear model we fit accounts for just 1% of data variability. This means that, as our intuition told us from the beginning, smokefreespots is not such a useful variable when analyzing the variability of the total smoking rates in the "Americas". 
+
+We now apply the same steps for the African region. The only difference is that, this time, we will apply a log transformation to the Numerica variable, because of its very right-skewed distribution.
+
+
+```{r}
+ggplot(data = smoking_africa, aes(x = smokefreespots, y = log(Numeric)))+
+  geom_point(position = "jitter")+ 
+  ggtitle("Number of Smoke-Free Spots vs. Smoking Rates")+
+  stat_smooth(method = "lm", fullrange = TRUE) +
+  xlab("Number of Smoke-Free Spots") +
+  ylab("Smoking Rates")
+```
+
+Model interpretation:
+
+```{r}
+lm(formula = log(Numeric) ~ smokefreespots, data = smoking_americas)
+```
+
+The model equation is:
+
+$$\widehat{log(Numeric)} = 20.9 + (-0.46)\times(smokefreespots)$$
+
+We obtain that for each unit increase in the smokefreespots, the percentage of smokers in that country is expected to be lower, by average, by 0.46. By exponentiating this value, we obtain that for each unit increase in the smokefreespots, the percentage of smokers in that area is expected to be lower, on average, by a factor of 0.063. This value is not so high, which further confirms the fact that the smokingfreespots did not represent such an effective measure in reducing smoking rates. 
+
+We calculate the R squared for this model:
+
+```{r}
+africa <- lm(formula = log(Numeric) ~ smokefreespots, data = smoking_africa)
+summary(africa)$r.squared
+```
+
+The R squared value for this model is even lower than the previous one - 0.0002, which means that this model accounts for only approximately 0.02% of data variability. 
+
+We can produce further visualizations of these two scaterplots that we have been working with, by coloring the points by year. Thus, we obtain that:
+
+
+```{r}
+ggplot(data = smoking_americas, aes(x = smokefreespots, y = Numeric, color = factor(Year)))+
+  geom_point(position="jitter")+ 
+  ggtitle("Number of Smoke-Free Spots vs. Smoking Rates By Year") +
+  xlab("Number of Smoke-Free Spots") +
+  ylab("Smoking Rates") +
+stat_smooth(method = "lm", fullrange = TRUE)
+```
+
+For the American regions, we obtain that the lower smooking rates were registered in the years 2010 and 2012, exactly when more smoke-free spots were implemented. 
+
+
+```{r}
+ggplot(data = smoking_africa, aes(x = smokefreespots, y = log(Numeric), color = factor(Year)))+
+  geom_point(position="jitter")+ 
+  ggtitle("Number of Smoke-Free Spots vs. Smoking Rates By Year") +
+  xlab("Number of Smoke-Free Spots") +
+  ylab("Smoking Rates") +
+stat_smooth(method = "lm", fullrange = TRUE)
+```
+
+By looking at the resulting 3 graphs, we can notice that, similarly as before, the lower percentages in the smoking rates occur during the 2010 and 2012 years, however, the graph shows a positive slope, so this actually means an increase in the precentages.  
+
+
+##Multiple linear regression:
+
+We have just seen that year plays an important role in explaining the variability of smoking percentages. Moreover, as we have showed in the first part of the project by using t. tests, we obtained that there are considerable more smokers within males that within females in general, so we can apply this for the "Americas" and "Africa" regions. 
+
+Thus, we will try to fit a linear model that accounts for the interaction between the variables "Year" and "Sex", for both the American and the African populations. 
+
+For the America region:
+
+```{r}
+m_america <- lm(Numeric ~ Sex*factor(Year), data = smoking_americas)
+m_america
+```
+
+The model equation that we obtain is:
+
+$\widehat{Numeric} = 20 + (-7.748)\times(factor(Year)2010) + (9.08)\times(SexMale:factor(Year)2010) + (3.7)\times(SexMale) + (-8.13)\times(factor(Year)2012) + (9.03)\times(SexMale:factor(Year)2012)$
+
+
+```{r}
+m_africa <- lm(log(Numeric) ~ Sex*factor(Year), data = smoking_africa)
+m_africa
+```
+
+The equation of this model will be: 
+
+$\widehat{Numeric} = 2.58 + (-1.51)\times(factor(Year)2010) + (1.82)\times(SexMale:factor(Year)2010) + (0.34)\times(SexMale) + (-1.62)\times(factor(Year)2012) + (1.92)\times(SexMale:factor(Year)2012)$
+
+
+We note that The categorical factor(Year) was encoded to dummy variables, whose levels are now factor(Year)2010 and factor(Year)2012. The level factor(Year)2007 was taken as a reference level so it does not appear in the model. Moreover, the categorical variable "Sex" was also encoded to dummy variables and thus SexMAle can only take the values 0 or 1. The interactions between the sex and the year variables are being accounted for by the SexMale:factor(Year)2010 and the SexMale:factor(Year)2012. 
+
+We calculate the adjusted R squared values (adjusted because we are adding more variables, which will automatically imply a higher R squared) for these two models and determine whether they have improved from the previous R. squared values. 
+
+
+```{r}
+summary(m_america)$adj.r.squared
+summary(m_africa)$adj.r.squared
+```
+
+Thus, for the "Americas" model, we obtain an adj.r.squared value of 0.28, which account for 28% of variability of the data. This value is considerably higher than the previous one - 0.01 for the model that accounts just the smoke-free spots.
+
+Similarly, for the "Africa" model, we obtain an adj.r squared value of 0.64 (meaning that the model accounts for 64% of data variability), a value which is much larger than the previous one of just 0.0025. 
+
+##Finding the best model:
+
+Creating the full model for both the "Americas" and the "Africa" populations:
+
+
+Based on the multiple linear regression we have previously used and on the high adjusted r squared values obtained, we will consider the intercations between Sex and factor(Year) for both the "Americas" and the "Africa" full models. We will apply the step() function in order to perform backwards elimination process for selecting the best model. 
+
+
+```{r}
+m_full <- lm(Numeric ~ Sex*factor(Year) + finesforviolations + finesongovernment
+             + finesonpatron + fundsforenforcement + complaints + subnationallegislation,
+             data = smoking_americas)
+summary(m_full)
+extractAIC(m_full)
+```
+
+The AIC value (used for to quantify the variability in the smoking percentages that is explained by this linear model) for the full model that corresponds to "Americas" is 443.
+
+```{r eval = TRUE}
+final_model <- step(m_full, direction = "backward")
+summary(final_model)
+extractAIC(final_model)
+```
+
+By applying the step function we can obtain a parsimonious model that has an AIC of 437. Since this vaue is smaller than that of the full model, it means the reduced model accounts for more data variability than the previous one. Moreover, this new parcimonious model only has subnationallegislation, finesonpatron, complaints and sex as explanatory variables for the smoking percentages. We observe that "Year" was eliminated, because it did not account for enough variability, as we have thought before. 
+
+```{r}
+m_africa <- lm(Numeric ~ Sex*factor(Year) + finesforviolations + finesongovernment
+             + finesonpatron + fundsforenforcement + complaints + subnationallegislation,
+             data = smoking_africa)
+extractAIC(m_africa)
+```
+
+The AIC value for this full model is: 547. Let's see if it can be improved by performing backward elimination using the step function, in order to find a better model:  
+
+```{r eval = TRUE}
+final_modelafrica <- step(m_africa, direction = "backward")
+extractAIC(final_modelafrica)
+```
+
+The AIC value for this reduced model is slightly lower - 544 - but it did not decrease by a significant amount. We notice that the explanatory variables were reduced reduced: this new, parcimonious model just uses complaints, finesongovernment and the interaction between sex and year. Thereby, this interaction that we considered is only meaningful in the context of the African continent. 
+
+
+##Conclusions:
+
+There are some notable differences between the model with the data from Africa and the data from America. The explanatory variables changed drastically; in the America model, the variables included following the backwards analysis were SexMale, finesonpatron, complaints, and subnationallegislationYes. In the Africa model, the interaction of Sex and Year, complaints and finesongovernment are included in the model. What this means in context of the data is that the percentage of smokers in America is more explained by whether or not the smoker is Male, whether or not there are fines on the smoker, whether or not complaints are filed, and if there is local legislation. In Africa, the bulk of the percentage of smokers is explained by Sex and Year, if complaints are filed, and if there are fines on government.
+
+The differences above make sense given the differeneces in the two regions. In America, people are more responsive to government and authority than people in Africa. In America, if people get fined for smoking or there is closer legislation than national, people might be less likely to smoke. They both have the Sex variable included, which makes sense because there was such a large difference between male and female smoking rates that we determined from the hypothesis testing. 
+
+Overall, in terms of policy, from the models we gather that the best policy for preventing smoking is determined by region. Because different people have different cultural habits, the policy should be adjusted accordingly. 
+
+Because significantly more men smoke than women, policy should be directed towards men. Within women, teens smoke more than adults so preventing teen smoking in women should be another priority. The policy for these targets should vary by region. For example, in America, it would be more useful to implement more local government than national government, and provide harsher fines on violations.
+
+We acknowledge the limitations of the model we were using, because we are trying to fit a linear line, even though the relatively small adjusted r-squared values indicate the fact that we should perhaps use a different approach. That is, we could further our research by performing polynomial-based regression and determine whether any contrasting differences would occur in terms of the new explanatory variables that we would obtain. 
+
+
+
+
+
